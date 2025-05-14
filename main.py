@@ -11,8 +11,9 @@ from datetime import datetime
 
 # Format: MM-DD_HH-MM-SS
 timestamp = datetime.now().strftime("%m-%d_%H-%M-%S")
-filename = f"output_{timestamp}"
-model_save_path = filename + ".pt"
+# os.makedirs()
+model_filename = f"output_{timestamp}"
+model_save_path = model_filename + ".pt"
 
 train_data_dir = "train"
 val_data_dir = "val"
@@ -42,15 +43,19 @@ model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
 model.history_encoder.load_state_dict(pretrained_model.history.state_dict())
 model.future_decoder.load_state_dict(pretrained_model.decoder.state_dict())
 
-tot_epochs = 80
+# model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
+# model.load_state_dict(torch.load('output_05-14_21-32-02.pt'))
+
+tot_epochs = 70
 logger = Logger(tot_epochs)
-optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=tot_epochs, eta_min=1e-4)
 
 train(model, train_loader, val_loader, optimizer,
-      logger, num_epochs=tot_epochs, start_epoch=0,
-      lambda_depth=0.75, lambda_semantic=1.75,
+      logger, model_filename, num_epochs=tot_epochs, start_epoch=0,
+      lambda_depth=2*255, lambda_semantic=255,
       use_depth_aux=use_depth, use_semantic_aux=use_semantic,
       scheduler=scheduler)
 
-torch.save(model.save_dict(), model_save_path)
+final_model_save_path = model_filename + "_final.pt"
+torch.save(model.state_dict(), final_model_save_path)

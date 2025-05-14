@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from datetime import datetime
 
-
 class customCriterion(nn.Module):
   def __init__(self, x_scale = 1.0, y_scale = 1.0, heading_scale = 4.0):
     super(customCriterion, self).__init__()
@@ -20,8 +19,24 @@ class customCriterion(nn.Module):
               self.heading_scale * heading_error**2).mean()
     return loss
   
-
+## Defining the criterions
 traj_criterion = customCriterion()
+semantic_criterion = nn.L1Loss() # Use cross entropy if using semantic label not image
+depth_criterion = nn.L1Loss()
+
+def compute_losses(traj, dep, sem,
+                   lambda_sem=0.1, lambda_depth=0.1,
+                   use_depth_aux=False, use_semantic_aux=False):
+	# Calculate losses
+	custom_loss   = traj_criterion(traj[0], traj[1])
+	depth_loss    = lambda_depth*depth_criterion(dep[0], dep[1]) if use_depth_aux else 0
+
+	true_sem = sem[1]
+  # print(sem[0].shape)
+	semantic_loss = lambda_sem*semantic_criterion(sem[0], true_sem)  if use_semantic_aux else 0
+
+	# Track losses
+	return [custom_loss, depth_loss, semantic_loss]
 
 class EarlyStopping:
     def __init__(self, patience=5, delta=0):
@@ -33,11 +48,11 @@ class EarlyStopping:
         self.best_model_state = None
 
     def __call__(self, val_loss, model):
-        score = -val_loss
+        score = val_loss
         if self.best_score is None:
             self.best_score = score
             self.best_model_state = model.state_dict()
-        elif score < self.best_score + self.delta:
+        elif val_loss > self.best_score - self.delta:
             self.counter += 1
             if self.counter >= self.patience:
                 self.early_stop = True
@@ -73,35 +88,30 @@ def train_one_epoch(model,
         optimizer.zero_grad()
         fut_pred, dep_pred, sem_pred = model(cam, hist)
 
-        traj_loss = traj_criterion(fut_pred, fut)
-        loss = traj_loss
-        total_trajectory_loss += traj_loss.item()
-        if use_depth_aux:
-            depth_loss = lambda_depth * F.l1_loss(dep_pred, dep)
-            loss += depth_loss
-            depth_loss += depth_loss
-        if use_semantic_aux:
-            semantic_loss = lambda_semantic * F.l1_loss(sem_pred, sem)
-            loss += semantic_loss
+        losses = compute_losses([fut_pred, fut],
+                                [dep_pred, dep],
+                                [sem_pred, sem],
+                                use_depth_aux=use_depth_aux,
+                                use_semantic_aux=use_semantic_aux,
+                                lambda_sem=lambda_semantic,
+                                lambda_depth=lambda_depth)
 
+        traj_loss = traj_criterion(fut_pred, fut)
+        loss = sum(losses)
         loss.backward()
         optimizer.step()
+
         train_loss += loss.item()
-        if use_depth_aux:
-          total_depth_loss += depth_loss.item()
-          avg_depth_loss = total_depth_loss / len(train_loader)
-        else:
-          avg_depth_loss = 0
+        total_trajectory_loss += losses[0].item()
+        total_depth_loss += losses[1]
+        total_semantic_loss += losses[2]
 
-        if use_semantic_aux:
-          total_semantic_loss += semantic_loss.item()
-          avg_semantic_loss = total_semantic_loss / len(train_loader)
-        else:
-          avg_semantic_loss = 0
-
-    avg_trajectory_loss = total_trajectory_loss / len(train_loader)
-    avg_loss = train_loss / len(train_loader)
-    logger.log(epoch=epoch, total_loss=avg_loss, traj_loss=avg_trajectory_loss, depth_loss = avg_depth_loss, semantic_loss = avg_semantic_loss)
+        logger.log(epoch=epoch,
+          total_loss=train_loss / len(train_loader),
+          traj_loss=total_trajectory_loss / len(train_loader),
+          depth_loss=total_depth_loss / len(train_loader),
+          semantic_loss=total_semantic_loss / len(train_loader)
+        )
     return
 
 def validate(model,
@@ -110,48 +120,53 @@ def validate(model,
              logger,
              best_ADE,
              model_save_path,
-             epoch=None):
+             epoch=None,
+             post_train=False):
     model.eval()
     total_ade, total_fde, total_mse = 0.0, 0.0, 0.0
     count = 0
 
     with torch.no_grad():
         for batch in val_loader:
-            cam = batch['camera'].to(device)
-            hist = batch['history'].to(device)
-            fut = batch['future'].to(device)
+            cam, hist, fut, dep, sem = [batch[k].to(device) for k in ['camera', 'history', 'future', 'depth', 'semantic_label']]
 
-            fut_pred, _, _ = model(cam, hist)
+            fut_pred, dep_pred, sem_pred = model(cam, hist)
 
             B, T, _ = fut.shape
             count += B
 
+            losses = compute_losses([fut_pred, fut],
+                                    [dep_pred, dep],
+                                    [sem_pred, sem],
+                                    lambda_sem=0,
+                                    lambda_depth=0)
             ade = torch.norm(fut_pred[:, :, :2] - fut[:, :, :2], dim=2).mean(dim=1).sum()
             fde = torch.norm(fut_pred[:, -1, :2] - fut[:, -1, :2], dim=1).sum()
-            mse = F.mse_loss(fut_pred, fut, reduction='sum')
 
             total_ade += ade.item()
             total_fde += fde.item()
-            total_mse += mse.item()
+            total_mse += losses[0].item()
 
     ade_avg = total_ade / count
     fde_avg = total_fde / count
-    mse_avg = total_mse / (count * T * 3)
+    mse_avg = total_mse / len(val_loader)
 
     if epoch is not None:
       logger.log(ADE=ade_avg, FDE=fde_avg, loss_val=mse_avg)
 
-    if ade_avg < best_ADE:
-       torch.save(model.save_dict(), model_save_path)
-       print(f"Saving model at epoch {epoch} with ADE: {ade_avg}")
+    if ade_avg < best_ADE and not post_train:
+      best_ADE = ade_avg
+      torch.save(model.state_dict(), model_save_path)
+      print(f"Saving model at epoch {epoch+1} with ADE: {ade_avg}")
 
-    return best_ADE, mse
+    return best_ADE, mse_avg, ade_avg
 
 def train(model,
           train_loader,
           val_loader,
           optimizer,
           logger,
+          model_save_path,
           num_epochs=50,
           start_epoch=0,
           lambda_depth=0.1,
@@ -163,15 +178,11 @@ def train(model,
     print(f"Using device: {device}")
     model = model.to(device)
 
-    best_ADE = 1.8
+    best_ADE = 1.70
 
-    timestamp = datetime.now().strftime("%m-%d_%H-%M-%S")
-    filename = f"output_{timestamp}"
-
-    earlystopping = EarlyStopping(patience=10, delta=0.01)
+    early_stopping = EarlyStopping(patience=7, delta=0.005)
 
     for epoch in range(num_epochs):
-        model_save_path = filename + "_epoch_" + epoch + ".pt"
         train_one_epoch(model,
                         train_loader,
                         optimizer,
@@ -182,14 +193,18 @@ def train(model,
                         lambda_semantic,
                         use_depth_aux,
                         use_semantic_aux)
-        best_ADE, mse = validate(model, val_loader, device, logger, best_ADE, model_save_path, epoch)
-        if earlystopping(mse, model):
+      
+        best_ADE, val_loss, _ = validate(model, val_loader, device, logger, best_ADE, model_save_path, epoch)
+        early_stopping(val_loss, model)
+        if early_stopping.early_stop:
            print("early stopping")
+           early_stopping.load_best_model(model)
            break
-        
         # logger.plot()
         logger.printf()
         if epoch == 0 and start_epoch == 0:
             logger.clean()
         if scheduler is not None:
             scheduler.step()
+
+

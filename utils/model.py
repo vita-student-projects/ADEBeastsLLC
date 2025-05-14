@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
+from torchvision.models import resnet34, ResNet34_Weights
 
 
 class DrivingPlanner(nn.Module):
@@ -10,11 +11,15 @@ class DrivingPlanner(nn.Module):
         self.use_semantic_aux = use_semantic_aux
 
         # Load pretrained ResNet
-        resnet = models.resnet34(pretrained=True)
+        resnet = models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
 
         # Freeze all resnet parameters
         for param in resnet.parameters():
             param.requires_grad = False
+
+        # unfreeze last layer of resnet
+        for param in resnet.layer4.parameters():
+            param.requires_grad = True
 
         # Use all resnet layers up to (but not including) avgpool
         self.img_encoder_L1 = nn.Sequential(
