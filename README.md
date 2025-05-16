@@ -71,8 +71,8 @@ DLAV/
 │ |── dataset.py # dataset and dataloader for nuPlan
 │ ├── logger.py # logging class
 │ ├── model.py # model architecture definition
-│ └── train.py # training functions
-└── run_job.sh # SLURM script for HPC job submission
+│ ├── train.py # training functions
+│ └── evaluate.py # training functions
 ```
 The weight for Milestone 2 can be found at this [link](https://drive.google.com/file/d/1vYNh7XjDubimhLllAMLughQsiTDb3NZw/view?usp=drive_link)
 ### Environment Config
