@@ -3,3 +3,4 @@ numpy
 torchvision
 Pillow
 matplotlib
+pandas
