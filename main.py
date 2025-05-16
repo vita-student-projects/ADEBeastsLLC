@@ -7,14 +7,10 @@ from utils.dataset import DrivingDataset
 from utils.logger import Logger
 from utils.model import DrivingPlanner, FirstModel
 from utils.train import train, validate
+from utils.evaluate import visualize_with_depth
 from datetime import datetime
 
 # Format: MM-DD_HH-MM-SS
-timestamp = datetime.now().strftime("%m-%d_%H-%M-%S")
-# os.makedirs()
-model_filename = f"output_{timestamp}"
-model_save_path = model_filename + ".pt"
-
 train_data_dir = "train"
 val_data_dir = "val"
 
@@ -36,26 +32,24 @@ use_semantic = True
 pretrained_model = FirstModel()
 pretrained_model.load_state_dict(torch.load("Weights_V1.pth"))
 
-# # Load new model
+# Load new model
 model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
 
 # Load pre-trined weight on to new model
-model.history_encoder.load_state_dict(pretrained_model.history.state_dict())
+model.history_enc.load_state_dict(pretrained_model.history.state_dict())
 model.future_decoder.load_state_dict(pretrained_model.decoder.state_dict())
 
-# model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
-# model.load_state_dict(torch.load('output_05-14_21-32-02.pt'))
-
-tot_epochs = 70
+tot_epochs = 200
 logger = Logger(tot_epochs)
-optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=tot_epochs, eta_min=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=4e-4, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=tot_epochs, eta_min=5e-5)
 
 train(model, train_loader, val_loader, optimizer,
-      logger, model_filename, num_epochs=tot_epochs, start_epoch=0,
-      lambda_depth=2*255, lambda_semantic=255,
+      logger, num_epochs=tot_epochs, start_epoch=0,
+      lambda_depth=3*255, lambda_semantic=3*20,
       use_depth_aux=use_depth, use_semantic_aux=use_semantic,
       scheduler=scheduler)
 
-final_model_save_path = model_filename + "_final.pt"
-torch.save(model.state_dict(), final_model_save_path)
+######################################## Evaluate ########################################
+# 🔚 Call at the end after training both models
+visualize_with_depth(val_loader, model, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))

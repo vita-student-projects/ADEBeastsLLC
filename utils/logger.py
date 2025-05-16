@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import sys
 import numpy as np
 
@@ -70,8 +71,7 @@ class Logger:
         axs[4].grid(True)
 
         fig.tight_layout()
-        clear_output(wait=True)
-        display(fig)
+        fig.savefig("Train_Progress.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def clean(self):
@@ -88,17 +88,17 @@ class Logger:
 
     def printf(self):
         message = f'Epoch {self.epoch[-1]}/{self.total_epochs}'
+        message += f' | Train Loss: {self.loss_total[-1]:.4f}'
+        message += f' | Val Loss: {self.loss_val[-1]:.4f}'
         message += f' | ADE: {self.ade_val[-1]:.4f}'
         message += f' | FDE: {self.fde_val[-1]:.4f}'
         message += f' | Best ADE: {self.best_ade:.4f}'
         message += f' | Trajectory Loss: {self.traj_loss[-1]:.4f}'
-        message += f' | Train Loss: {self.loss_total[-1]:.4f}'
-        message += f' | Val Loss: {self.loss_val[-1]:.4f}'
 
         # Only print if non-zero and exists
-        if self.depth_loss[-1] != 0:
+        if len(self.depth_loss)>0 and self.depth_loss[-1] != 0:
             message += f' | Depth Loss: {self.depth_loss[-1]:.4f}'
-        if self.seg_loss[-1] != 0:
+        if len(self.seg_loss)>0 and self.seg_loss[-1] != 0:
             message += f' | Seg Loss: {self.seg_loss[-1]:.4f}'
 
         sys.stdout.write(f'\n{message}\n')

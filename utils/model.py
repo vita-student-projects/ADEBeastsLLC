@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from torchvision import models
+import torch.nn.functional as F
 from torchvision.models import resnet34, ResNet34_Weights
-
 
 class DrivingPlanner(nn.Module):
     def __init__(self, use_depth_aux=False, use_semantic_aux=False): # Changed _init to _init_
@@ -11,15 +10,17 @@ class DrivingPlanner(nn.Module):
         self.use_semantic_aux = use_semantic_aux
 
         # Load pretrained ResNet
-        resnet = models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
+        resnet = resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
 
         # Freeze all resnet parameters
         for param in resnet.parameters():
             param.requires_grad = False
 
-        # unfreeze last layer of resnet
         for param in resnet.layer4.parameters():
             param.requires_grad = True
+
+        # for param in resnet.layer3.parameters():
+        #     param.requires_grad = True
 
         # Use all resnet layers up to (but not including) avgpool
         self.img_encoder_L1 = nn.Sequential(
@@ -33,6 +34,7 @@ class DrivingPlanner(nn.Module):
         self.img_encoder_L3 = resnet.layer3 # 14 x 14 x 256
         self.img_encoder_L4 = resnet.layer4 # Output: 7x7x512
 
+
         # Use Resnet
         self.resnet = nn.Sequential(
             resnet.avgpool,
@@ -40,8 +42,31 @@ class DrivingPlanner(nn.Module):
             nn.Linear(512, 256)
         )
 
+        # Decoder for Depth estimation
+        if self.use_depth_aux:
+            self.depth_L3 = self._upsample_block(512, 256)       # 14 x 14   x 256
+            self.depth_L2 = self._upsample_block(256 + 256, 128) # 28 x 28   x 128
+            self.depth_L1 = self._upsample_block(128 + 128, 64)  # 56 x 56   x 64
+            self.depth_decoder = nn.Sequential(
+                self._upsample_block(64 + 64, 32),    # 112 x 112 x 32
+                self._upsample_block(32, 16),         # 224 x 224 x 16
+                nn.Conv2d(16, 1, kernel_size=3, padding=1),  # 224 x 224 x 1
+            )
+
+        if self.use_semantic_aux:
+            self.semantic_L3 = self._upsample_block(512, 256)       # 14 x 14   x 256
+            self.semantic_L2 = self._upsample_block(256 + 256, 128) # 28 x 28   x 128
+            self.semantic_L1 = self._upsample_block(128 + 128, 64)  # 56 x 56   x 64
+            self.semantic_decoder = nn.Sequential(
+                self._upsample_block(64 + 64, 32),    # 112 x 112 x 32
+                self._upsample_block(32, 16),         # 224 x 224 x 16
+                nn.Conv2d(16, 15, kernel_size=3, padding=1),  # 224 x 224 x 3
+            )
+
         # Encoder for the history
-        self.history_encoder = nn.Sequential(
+        self.history_encoder_1 = nn.GRU(input_size=3, hidden_size=256, batch_first=True, bidirectional=True)
+        self.history_encoder_2 = nn.GRU(input_size=256, hidden_size=128, batch_first=True)
+        self.history_enc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(3*21, 128),
             nn.ReLU(),
@@ -49,10 +74,14 @@ class DrivingPlanner(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, 128)
+            nn.Linear(128, 128),
         )
 
         # Decoder for predicting future trajectory
+        self.future_decoder_1  = nn.GRU(input_size=(128+256), hidden_size=128, batch_first=True)
+        self.future_decoder_2  = nn.GRU(input_size=128, hidden_size=64, batch_first=True)
+        self.output_trajectory = nn.Linear(64, 3)
+
         self.future_decoder = nn.Sequential(
             nn.ReLU(),
             nn.Linear(256 + 128, 128),
@@ -63,32 +92,6 @@ class DrivingPlanner(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 60 * 3)
         )
-
-        # Decoder for Depth estimation
-        if self.use_depth_aux:
-            self.depth_L3 = self._upsample_block(512, 256)       # 14 x 14   x 256
-            # self.depth_L3_lin
-            self.depth_L2 = self._upsample_block(256 + 256, 128) # 28 x 28   x 128
-            self.depth_L1 = self._upsample_block(128 + 128, 64)  # 56 x 56   x 64
-            self.depth_decoder = nn.Sequential(
-                self._upsample_block(64 + 64, 32),    # 112 x 112 x 32
-                self._upsample_block(32, 8),         # 224 x 224 x 16
-                # nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224 -> 448x448
-                # nn.ReLU(inplace=True),
-                nn.Conv2d(8, 1, kernel_size=3, padding=1),  # 448 x 448 x 1
-            )
-
-        if self.use_semantic_aux:
-            self.semantic_L3 = self._upsample_block(512, 256)       # 14 x 14   x 256
-            self.semantic_L2 = self._upsample_block(256 + 256, 128) # 28 x 28   x 128
-            self.semantic_L1 = self._upsample_block(128 + 128, 64)  # 56 x 56   x 64
-            self.semantic_decoder = nn.Sequential(
-                self._upsample_block(64 + 64, 32),    # 112 x 112 x 32
-                self._upsample_block(32, 8),         # 224 x 224 x 16
-                # nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),  # 224x224 -> 448x448
-                # nn.ReLU(inplace=True),
-                nn.Conv2d(8, 3, kernel_size=3, padding=1),  # 448 x 448 x 3
-            )
 
     def _upsample_block(self, in_channels, out_channels):
         return nn.Sequential(
@@ -106,10 +109,10 @@ class DrivingPlanner(nn.Module):
         visual_resnet   = self.resnet(visual_features)
 
         # Process History
-        history = self.history_encoder(history)
+        history_encoded = self.history_enc(history)
 
         # Predict future
-        combined = torch.cat([visual_resnet, history], dim=1)
+        combined = torch.cat([visual_resnet, history_encoded], dim=1)
         future = self.future_decoder(combined)
         future = future.reshape(-1, 60, 3)  # Reshape to (batch_size, timesteps, features)
 
@@ -119,8 +122,6 @@ class DrivingPlanner(nn.Module):
             depth_L2 = self.depth_L2(torch.cat([depth_L3, img_encoder_L3], dim=1))
             depth_L1 = self.depth_L1(torch.cat([depth_L2, img_encoder_L2], dim=1))
             depth_out = self.depth_decoder(torch.cat([depth_L1, img_encoder_L1], dim=1))
-            # depth_out = F.interpolate(depth_out, size=(224, 224), mode='area').squeeze(1)#.permute(0, 2, 3, 1)
-            # depth_out = depth_out[:,:200, :300, :]
 
         # Predict semantic information
         if self.use_semantic_aux:
@@ -128,8 +129,6 @@ class DrivingPlanner(nn.Module):
             semantic_L2 = self.semantic_L2(torch.cat([semantic_L3, img_encoder_L3], dim=1))
             semantic_L1 = self.semantic_L1(torch.cat([semantic_L2, img_encoder_L2], dim=1))
             semantic_out = self.semantic_decoder(torch.cat([semantic_L1, img_encoder_L1], dim=1))
-            # semantic_out = F.interpolate(semantic_out, size=(224, 224), mode='area')#.permute(0, 2, 3, 1)
-            # semantic_out = semantic_out[:,:,:200, :300]
 
         # Voila
         if self.use_depth_aux and self.use_semantic_aux:
@@ -140,6 +139,8 @@ class DrivingPlanner(nn.Module):
             return future, None, semantic_out
         else:
             return future, None, None
+
+
 
 class FirstModel(nn.Module):
     def __init__(self): # Changed _init_ to __init__
@@ -184,3 +185,19 @@ class FirstModel(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 60 * 3),
         )
+
+    def forward(self, camera, history):
+        # Process camera images
+        visual_features = self.cnn(camera)
+
+        # Combine features
+        history_latent = self.history(history)
+
+        combined = torch.cat([visual_features, history_latent], dim=1)
+
+        # Predict future trajectory
+        future = self.decoder(combined)
+
+        future = future.reshape(-1, 60, 3)  # Reshape to (batch_size, timesteps, features)
+
+        return future
