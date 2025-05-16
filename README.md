@@ -1,6 +1,6 @@
 # DLAV Project Submission Part 2
 **ADEBeastsLLC** <br>
- Rafael Garcia Bustillos and Jeffrey Yu
+ Rafael Garcia Bustillos (377114) and Jeffrey Yu (371327)
 
 ## Task
 
