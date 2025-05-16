@@ -75,10 +75,13 @@ DLAV/
 └── run_job.sh # SLURM script for HPC job submission
 ```
 
+### Environment Config
+Install the required packages using the command: ```pip install -r requirements.txt```
+
 ### Training
 To train the model, run the ```main.py``` file. The training hyperparameters are modified within the main file.
 
-### Run 
+### Visualization and Validation 
 To run the model and visualize on the validation set, run the code ```validate.py```. You need to modify the line to load in the desired weights. Below is an image of the visualization of the model outputs.
 
 ![Graph](Visualization_model.jpg)
