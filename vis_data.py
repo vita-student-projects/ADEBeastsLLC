@@ -19,7 +19,7 @@ for i in range(k):
     axis[0,i].imshow(data[i]["camera"])
     axis[0,i].axis("off")
 
-    axis[1, i].plot(data[i]["sdc_history_feature"][:, 0], data[i]["sdc_history_feature"][:, 1], "o-", color="gold", label="Past")
+    axis[1, i].plot(data[i]["sdc_history_feature"][:10, 0], data[i]["sdc_history_feature"][:10, 1], "o-", color="gold", label="Past")
     axis[1, i].plot(data[i]["sdc_future_feature"][:, 0], data[i]["sdc_future_feature"][:, 1], "o-", color="green", label="Future")
     axis[1, i].legend()
     axis[1, i].axis("equal")

@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import os
 
 from utils.dataset import DrivingDataset
-from utils.model import DrivingPlanner
+from utils.model import DrivingPlanner_GRU
 from utils.evaluate import visualize, evaluate_model
 from utils.train import train_params, customCriterion
 
@@ -14,8 +14,8 @@ val_loader = DataLoader(val_dataset, batch_size=32, num_workers=2)
 
 # Load testing model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = DrivingPlanner()
-model.load_state_dict(torch.load("results/output_05-20_20-19-17.pt"))
+model = DrivingPlanner_GRU()
+model.load_state_dict(torch.load("results/ADE_1_4270.pt"))
 model.to(device)
 
 # Initialize parameters

@@ -1,4 +1,5 @@
 import os
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,6 +33,7 @@ class train_params:
         self.optimizer = None
         self.criterion = None
         self.scheduler = None
+        self.data_aug_T = None
         self.current_epoch = 0
 
         self.save_best = False
@@ -65,6 +67,9 @@ class train_params:
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
 
+    def set_data_aug_T(self, transformation):
+        self.data_aug_T = transformation
+
     def increase_epoch(self):
         self.current_epoch += 1
 
@@ -77,6 +82,18 @@ def train_one_epoch(model,
 
     for batch in params.train_loader:
         cam, hist, fut = [batch[k].to(params.device) for k in ['camera', 'history', 'future']]
+
+        # Choose random transformation
+        transform = random.choice(params.data_aug_T)
+
+        # Apply data augmentation to each image in batch individually
+        cam_transformed = []
+        for img in cam:  
+            # img_pil = T.ToPILImage()(img.cpu())     # Convert to PIL
+            img_aug = transform(img)            # Apply dt augmentation
+            # img_tensor = T.ToTensor()(img_aug).to(params.device)
+            cam_transformed.append(img_aug)
+        cam = torch.stack(cam_transformed)
 
         params.optimizer.zero_grad()
         fut_pred = model(cam, hist)
@@ -136,6 +153,7 @@ def train(model,
     os.makedirs("results", exist_ok=True)
     filename = f"results/output_{timestamp}.pt"
     params.set_save_best(filename)
+    print("Save name is: ", filename)
 
     for epoch in range(params.tot_epochs):
         train_one_epoch(model, params)

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
 from utils.dataset import DrivingDataset
-from utils.model import DrivingPlanner
+from utils.model import DrivingPlanner_GRU
 
 test_data_dir = "test_public_real"
 test_files = [os.path.join(test_data_dir, fn) for fn in sorted([f for f in os.listdir(test_data_dir) if f.endswith(".pkl")], key=lambda fn: int(os.path.splitext(fn)[0]))]
@@ -13,8 +13,8 @@ test_loader = DataLoader(test_dataset, batch_size=250, num_workers=2)
 
 # Load testing model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = DrivingPlanner()
-model.load_state_dict(torch.load("results/output_05-20_20-19-17.pt"))
+model = DrivingPlanner_GRU()
+model.load_state_dict(torch.load("results/ADE_1_4270.pt"))
 model.to(device)
 model.eval()
 
