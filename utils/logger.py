@@ -3,17 +3,15 @@ import sys
 import numpy as np
 
 class Logger:
-    def __init__(self, total_epochs):
+    def __init__(self, tot_epochs):
         self.loss_val = []
-        self.loss_total  = []
+        self.loss_train  = []
         self.ade_val  = []
         self.fde_val  = []
-        self.epoch    = []
-        self.depth_loss = []
-        self.seg_loss = []
-        self.traj_loss = []
         self.best_ade = 50
-        self.total_epochs = total_epochs
+
+        self.epoch    = []
+        self.total_epochs = tot_epochs
 
     def log(self, epoch=None, **metrics):
         if epoch is not None:
@@ -22,25 +20,21 @@ class Logger:
         for key, val in metrics.items():
             if key == 'loss_val':
                 self.loss_val.append(val)
-            elif key == 'traj_loss':
-                self.traj_loss.append(val)
+            elif key == 'loss_train':
+                self.loss_train.append(val)
             elif key == 'ADE':
                 self.ade_val.append(val)
                 if val < self.best_ade:
                     self.best_ade = val
             elif key == 'FDE':
                 self.fde_val.append(val)
-            elif key == 'depth_loss':
-                self.depth_loss.append(val)
-            elif key == 'semantic_loss':
-                self.seg_loss.append(val)
-            elif key == 'total_loss':
-                self.loss_total.append(val)
 
     def plot(self):
+        if self.epoch[-1] == 1:
+            return
         fig, axs = plt.subplots(1, 5, figsize=(25, 5))
 
-        axs[0].plot(self.epoch, self.loss_total, marker='o', color='blue')
+        axs[0].plot(self.epoch, self.loss_train, marker='o', color='blue')
         axs[0].set_title("Training Loss")
         axs[0].set_xlabel("Epoch")
         axs[0].set_ylabel("Loss [-]")
@@ -64,7 +58,7 @@ class Logger:
         axs[3].set_ylabel("Error [-]")
         axs[3].grid(True)
 
-        axs[4].plot(self.epoch, np.array(self.loss_val) - np.array(self.traj_loss), marker='o', color='green')
+        axs[4].plot(self.epoch, np.array(self.loss_val) - np.array(self.loss_train), marker='o', color='green')
         axs[4].set_title("Loss Difference")
         axs[4].set_xlabel("Epoch")
         axs[4].set_ylabel("Val - Train Loss [-]")
@@ -74,32 +68,20 @@ class Logger:
         fig.savefig("Train_Progress.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-    def clean(self):
-        self.loss_val.pop(0)
-        self.traj_loss.pop(0)
-        self.loss_total.pop(0)
-        self.ade_val.pop(0)
-        self.fde_val.pop(0)
-        self.epoch.pop(0)
-        if self.depth_loss:
-            self.depth_loss.pop(0)
-        if self.seg_loss:
-            self.seg_loss.pop(0)
-
     def printf(self):
         message = f'Epoch {self.epoch[-1]}/{self.total_epochs}'
-        message += f' | Train Loss: {self.loss_total[-1]:.4f}'
+        message += f' | Train Loss: {self.loss_train[-1]:.4f}'
         message += f' | Val Loss: {self.loss_val[-1]:.4f}'
         message += f' | ADE: {self.ade_val[-1]:.4f}'
         message += f' | FDE: {self.fde_val[-1]:.4f}'
         message += f' | Best ADE: {self.best_ade:.4f}'
-        message += f' | Trajectory Loss: {self.traj_loss[-1]:.4f}'
-
-        # Only print if non-zero and exists
-        if len(self.depth_loss)>0 and self.depth_loss[-1] != 0:
-            message += f' | Depth Loss: {self.depth_loss[-1]:.4f}'
-        if len(self.seg_loss)>0 and self.seg_loss[-1] != 0:
-            message += f' | Seg Loss: {self.seg_loss[-1]:.4f}'
 
         sys.stdout.write(f'\n{message}\n')
         sys.stdout.flush()
+
+        if self.epoch[0] == 1:
+            self.loss_val.pop(0)
+            self.loss_train.pop(0)
+            self.ade_val.pop(0)
+            self.fde_val.pop(0)
+            self.epoch.pop(0)

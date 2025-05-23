@@ -6,19 +6,15 @@ from torch.utils.data import DataLoader
 from utils.dataset import DrivingDataset
 from utils.model import DrivingPlanner
 
-test_data_dir = "test_public"
+test_data_dir = "test_public_real"
 test_files = [os.path.join(test_data_dir, fn) for fn in sorted([f for f in os.listdir(test_data_dir) if f.endswith(".pkl")], key=lambda fn: int(os.path.splitext(fn)[0]))]
 test_dataset = DrivingDataset(test_files, test=True)
 test_loader = DataLoader(test_dataset, batch_size=250, num_workers=2)
 
-# Model booleans
-use_depth = True
-use_semantic = True
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 # Load testing model
-model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
-model.load_state_dict(torch.load("Weights_V2.pt"))
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = DrivingPlanner()
+model.load_state_dict(torch.load("results/output_05-20_20-19-17.pt"))
 model.to(device)
 model.eval()
 
@@ -30,7 +26,7 @@ with torch.no_grad():
         camera = batch['camera'].to(device)
         history = batch['history'].to(device)
 
-        pred_future, _, _ = model(camera, history)
+        pred_future = model(camera, history)
         all_plans.append(pred_future.cpu().numpy()[..., :2])
 all_plans = np.concatenate(all_plans, axis=0)
 
@@ -54,6 +50,6 @@ for t in range(1, T + 1):
 df_xy.columns = new_col_names
 
 # Save to CSV
-df_xy.to_csv("submission_phase2.csv", index=False)
+df_xy.to_csv("submission_phase3.csv", index=False)
 
 print(f"Shape of df_xy: {df_xy.shape}")

@@ -5,19 +5,22 @@ import os
 
 from utils.dataset import DrivingDataset
 from utils.logger import Logger
-from utils.model import DrivingPlanner, FirstModel
-from utils.train import train, validate
-from utils.evaluate import visualize_with_depth
+from utils.model import DrivingPlanner
+from utils.train import train, validate, customCriterion, train_params
+from utils.evaluate import visualize
 from datetime import datetime
 
 # Format: MM-DD_HH-MM-SS
 train_data_dir = "train"
-val_data_dir = "val"
+val_data_dir = "val_real"
 
 train_files = [os.path.join(train_data_dir, f) for f in os.listdir(train_data_dir) if f.endswith('.pkl')]
 val_files = [os.path.join(val_data_dir, f) for f in os.listdir(val_data_dir) if f.endswith('.pkl')]
 
-train_dataset = DrivingDataset(train_files)
+train_files_mixed = train_files + val_files[:500]
+val_files = val_files[500:]
+
+train_dataset = DrivingDataset(train_files_mixed)
 val_dataset = DrivingDataset(val_files)
 
 train_loader = DataLoader(train_dataset, batch_size=32, num_workers=2, shuffle=True)
@@ -25,31 +28,42 @@ val_loader = DataLoader(val_dataset, batch_size=32, num_workers=2)
 
 ######################################## Training Parameters ########################################
 
-use_depth = True
-use_semantic = True
-
-# Load previous weights (old architecture)
-pretrained_model = FirstModel()
-pretrained_model.load_state_dict(torch.load("Weights_V1.pth"))
-
 # Load new model
-model = DrivingPlanner(use_depth_aux=True, use_semantic_aux=True)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = DrivingPlanner()
+tot_epochs = 2
 
-# Load pre-trined weight on to new model
-model.history_enc.load_state_dict(pretrained_model.history.state_dict())
-model.future_decoder.load_state_dict(pretrained_model.decoder.state_dict())
+# Prepare training parameters
+training_params = train_params()
+training_params.set_tot_epochs(tot_epochs)
+training_params.set_device(device)
+training_params.set_logger(Logger(training_params.tot_epochs))
+training_params.set_train_loader(train_loader)
+training_params.set_val_loader(val_loader)
+training_params.set_criterion(
+	customCriterion(
+      	x_scale = 1.0,
+      	y_scale = 1.0,
+      	heading_scale = 4.0
+	)
+)
+training_params.set_optimizer(
+    optim.Adam(
+		model.parameters(),
+		lr=1e-3,
+		weight_decay=1e-5
+    )
+)
+training_params.set_scheduler(
+    optim.lr_scheduler.CosineAnnealingLR(
+		training_params.optimizer,
+		T_max=training_params.tot_epochs,
+		eta_min=5e-5
+	)
+)
 
-tot_epochs = 200
-logger = Logger(tot_epochs)
-optimizer = optim.Adam(model.parameters(), lr=4e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=tot_epochs, eta_min=5e-5)
-
-train(model, train_loader, val_loader, optimizer,
-      logger, num_epochs=tot_epochs, start_epoch=0,
-      lambda_depth=3*255, lambda_semantic=3*20,
-      use_depth_aux=use_depth, use_semantic_aux=use_semantic,
-      scheduler=scheduler)
+train(model,training_params)
 
 ######################################## Evaluate ########################################
 # 🔚 Call at the end after training both models
-visualize_with_depth(val_loader, model, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+visualize(val_loader, model, training_params.device)
