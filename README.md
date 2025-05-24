@@ -1,6 +1,6 @@
 # DLAV Project Submission Part 3
 **ADEBeastsLLC** <br>
- Rafael Garcia Bustillos and Jeffrey Yu
+ Rafael Garcia Bustillos (377114) and Jeffrey Yu (371327)
 
 ## Task
 
@@ -20,16 +20,19 @@ sdc_future_feature: ndarray (60, 3),      # [x, y, heading] for the next 60 s
 
 ## Structure
 
-We designed the architecture with 5 main components:
+We designed the architecture with 3 main components:
 1. **Pretrained Resnet34 Image feature extractor** <br>
- We use a pretrained Resnet34 model with weights from the Image1K dataset. We want to use a robust and high-performing model to extract image features. We cropped and interpolated the input RGB image, semantic map, and depth map to (224x224) to respect the ResNet input image architecture. To adjust the model to our dataset, we chose to retrain the last ResNet block. We want to incorporate the depth and semantic label losses in the training of the last section of the ResNet, letting the model learn to incorporate the auxiliary losses and the high-level features relevant to our dataset.
+ We use a pretrained Resnet34 model with weights from the Image1K dataset. We want to use a robust and high-performing model to extract image features. We cropped and interpolated the input RGB image, semantic map, and depth map to (224x224) to respect the ResNet input image architecture. To adjust the model to our dataset, we chose to retrain the last ResNet block, letting the model learn the high-level features relevant to our dataset.
 2. **History feature extractor** <br>
  We use a 4-layer fully connected MLP to learn relationships between the past locations of the model. This outputs a vector of size 128.
 3. **Future Decoder** <br>
- The decoder concatenates the outputs of the history feature extractor with the image encoder. It is a fully connected MLP that uses 2 hidden layers and then outputs a final prediction, which is a vector of size 180. This is then reshaped to the desired shape of [60, 3].
+ To predict the future position and heading, we utilize a GRU and 2-layered fully connected MLP.
+ The hidden state of the GRU is initialized by concatenating the image and history feature extractor results; the input state is initialized as the last position in `sdc_history_feture`.
+ A 60-step for loop is created, where the current-position is encoded with the GRU to a vector of size 384, then the MLP converts it to a vector of size 3 for x-position, y-position, and heading. The resuts are save on a list and concatenated at the end, to  shape of [batch, 60, 3].
+
 
 ## Loss Function Design
-We used a custom loss criterion for the future trajectories. We scale the L2 loss of x, y, and heading differently. We chose to scale the heading loss by 4 times to compensate for the magnitude of the difference between the maximum value of the heading and the maximum displacements of the x and y positions.  
+We used a custom loss criterion for the future trajectories. We scale the L2 loss of x, y, and heading differently. We chose to scale the x- and y-position by 2, to slighlty increase the loss value of the model. Next, we scaled the heading loss by 8 times to compensate for the magnitude of the difference between the maximum value of the heading and the maximum displacements of the x and y positions.
 
 ## Training Configuration 
 The model was trained on an HPC cluster with a V100 GPU.
@@ -37,11 +40,18 @@ The model was trained on an HPC cluster with a V100 GPU.
 We trained using the following configurations:
 
 - Optimizer: Adam   
-- Learning Rate Scheduler: Cosine annealing with a starting learning rate of 5e-4 and ending learning rate of 5e-5.
-- Epochs: 200
+- Learning Rate Scheduler: Cosine annealing with a starting learning rate of 8e-4 and ending learning rate of 5e-5.
+- Epochs: 150
 - Batch size: 32
 
-We loaded the weights from Milestone 1 for the history feature extractor and future decoder. <span style="color:red">FINISH</span>
+During the training loop, for every batch-set, 1 random image transformations would be applied to all the images in a batch.
+The trnsformations we chose are:
+- **RandomCrop**: Will not change the image becaue we chose a random crop of size [224, 224]=input image size. This transformation would keep the image unchanged, so the model can train on 'normal' images.
+- **ColorJitter**: For the model to better extract the geometrical features of the image and not be too affected by the object's colors. Because in the end, not all cars, rods, building will be of the same color.
+- **RandomPerspective**: To prepare the model for small varitions in perspective.
+- **GaussianBlur**: To prepare the model for different imge qualities, or weather conditions with poor visibility(i.e. raing or fog covering the camera's view)
+- **RandomResizedCrop**: Zooms into cropped regions of the image and re-szes them to [224,224]. Lets the model look at different content in the same iamge.
+
 Note: We save the best-performing model while training, using the criterion of lowest ADE on the validation. This may not correspond to the final model found at the end of training.
 
 ## Code Structure and Instructions
@@ -53,15 +63,13 @@ DLAV/
 ├── analyze.py # loads a model, visualizes results and calculates validation ADE
 ├── kaggle.py # prepares csv for kaggle
 ├── vis_data.py # visualizes the input data 
-├── Weights_V1.pth # pretrained weights from Milestone 1 with utils.model.FirstModel
-├── Weights_V2.pt # pretrained weights from Milestone 2 with utils.model.DrivingPlanner
+├── Weights_V3.pth # Trained weights from Milestone 3 with utils.model.DrivingPlanner_GRU
 ├── utils/
 │ |── dataset.py # dataset and dataloader for nuPlan
 | ├── evaluate.py # helper functions for validation of model
 │ ├── logger.py # logging class
 │ ├── model.py # model architecture definition
 │ └── train.py # training functions
-└── run_job.sh # SLURM script for HPC job submission
 ```
 The weight for Milestone 3 can be found at this link <span style="color:red">FINISH</span>
 ### Environment Config
@@ -73,11 +81,5 @@ To train the model, run the ```main.py``` file. The training hyperparameters are
 ### Visualization and Validation 
 To run the model and visualize on the validation set, run the code ```validate.py```. You need to modify the line to load in the desired weights. Below is an image of the visualization of the model outputs.
 
-![Graph](Visualization_model.jpg)
-
 ### Infer  
 To generate the ```.csv``` file for submissions, run the file ```kaggle.py```.
-
-## Additional Notes
-- We attempted to train with a GRU, but were not able to get an ADE below ~2.5, like in Milestone 1. <span style="color:red">FINISH</span>
-- We attempted to use early stopping, with a patience of 10 or less, but found that it was stopping too early, so we just trained to the epochs that we set the session to.
