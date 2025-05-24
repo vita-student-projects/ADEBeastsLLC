@@ -33,7 +33,7 @@ val_loader = DataLoader(val_dataset, batch_size=32, num_workers=2)
 # Load new model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = DrivingPlanner_GRU()
-tot_epochs = 150
+tot_epochs = 250
 
 # Prepare training parameters
 training_params = train_params()
@@ -66,11 +66,13 @@ training_params.set_scheduler(
 training_params.set_data_aug_T(
 	# Define available transformations
     [
+		None, None,
         T.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1),
         T.RandomPerspective(distortion_scale=0.5, p=1.0),
-        T.RandomCrop(size=(224, 224)),
         T.RandomResizedCrop(size=(224, 224)),
-        T.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2.0))
+        T.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2.0)),
+		T.ElasticTransform(),
+		T.RandomAffine(degrees=(0,0), translate=(0.25,0), shear=2)
     ]
 )
 

@@ -14,7 +14,7 @@ test_loader = DataLoader(test_dataset, batch_size=250, num_workers=2)
 # Load testing model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = DrivingPlanner_GRU()
-model.load_state_dict(torch.load("results/ADE_1_4270.pt"))
+model.load_state_dict(torch.load("results/ADE_1_4037.pt"))
 model.to(device)
 model.eval()
 

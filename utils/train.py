@@ -86,14 +86,16 @@ def train_one_epoch(model,
         # Choose random transformation
         transform = random.choice(params.data_aug_T)
 
-        # Apply data augmentation to each image in batch individually
-        cam_transformed = []
-        for img in cam:  
-            # img_pil = T.ToPILImage()(img.cpu())     # Convert to PIL
-            img_aug = transform(img)            # Apply dt augmentation
-            # img_tensor = T.ToTensor()(img_aug).to(params.device)
-            cam_transformed.append(img_aug)
-        cam = torch.stack(cam_transformed)
+        if transform is not None:
+            # print("transform is: ", transform)
+            # Apply data augmentation to each image in batch individually
+            cam_transformed = []
+            for img in cam:  
+                # img_pil = T.ToPILImage()(img.cpu())     # Convert to PIL
+                img_aug = transform(img)            # Apply dt augmentation
+                # img_tensor = T.ToTensor()(img_aug).to(params.device)
+                cam_transformed.append(img_aug)
+            cam = torch.stack(cam_transformed)
 
         params.optimizer.zero_grad()
         fut_pred = model(cam, hist)
