@@ -45,12 +45,14 @@ We trained using the following configurations:
 - Batch size: 32
 
 During the training loop, for every batch-set, 1 random image transformations would be applied to all the images in a batch.
-The trnsformations we chose are:
-- **RandomCrop**: Will not change the image becaue we chose a random crop of size [224, 224]=input image size. This transformation would keep the image unchanged, so the model can train on 'normal' images.
+The transformations we chose are:
+- **None**: We simply pply no visual transforms, and you the raw image.
 - **ColorJitter**: For the model to better extract the geometrical features of the image and not be too affected by the object's colors. Because in the end, not all cars, rods, building will be of the same color.
 - **RandomPerspective**: To prepare the model for small varitions in perspective.
-- **GaussianBlur**: To prepare the model for different imge qualities, or weather conditions with poor visibility(i.e. raing or fog covering the camera's view)
 - **RandomResizedCrop**: Zooms into cropped regions of the image and re-szes them to [224,224]. Lets the model look at different content in the same iamge.
+- **GaussianBlur**: To prepare the model for different image qualities, or weather conditions with poor visibility(i.e. raing or fog covering the camera's view)
+- **ElasticTransform**: Prepres the model for non-sharp images (i.e. in rainy conditions)
+- **RandomAffine**: Applies a small horizontal translation to the image to improve the moduls robustness in varying camera angles. (i.e. car on left lane vs. right lane)
 
 Note: We save the best-performing model while training, using the criterion of lowest ADE on the validation. This may not correspond to the final model found at the end of training.
 
