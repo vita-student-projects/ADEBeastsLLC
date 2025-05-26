@@ -73,7 +73,7 @@ DLAV/
 │ ├── model.py # model architecture definition
 │ └── train.py # training functions
 ```
-The weight for Milestone 3 can be found at this link <span style="color:red">FINISH</span>
+The weight for Milestone 3 can be found at [this link](https://drive.google.com/file/d/1NP9nO1XP8swJ3fl0U50-KtdU88IxAlQd/view?usp=drive_link)
 ### Environment Config
 Install the required packages using the command: ```pip install -r requirements.txt```
 
